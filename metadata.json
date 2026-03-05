@@ -1,0 +1,7 @@
+{
+  "name": "Restaurant Inventory Master",
+  "description": "A comprehensive inventory management system for small to medium restaurants featuring AI-powered invoice scanning, real-time stock tracking, and advanced analytics.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
