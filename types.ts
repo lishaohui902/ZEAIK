@@ -54,12 +54,13 @@ export interface AuditRecord {
   id: string;
   date: string;
   type: AuditType;
-  consumptionType?: string;
+  consumptionType?: string; // Keep for backward compatibility or general type
   items: {
     itemId: string;
     itemName: string;
     previousStock: number;
     newStock: number;
     diff: number;
+    consumptionType?: string; // New field for per-item type
   }[];
 }

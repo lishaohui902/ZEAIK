@@ -230,6 +230,15 @@ export default function InventoryEntry({ vendors, inventory, onComplete }: Inven
                   />
                 </div>
                 <div className="flex-1 bg-slate-50/50 p-2 rounded-lg">
+                  <p className="text-[8px] text-slate-400 uppercase font-bold">价格</p>
+                  <input 
+                    type="number" 
+                    value={item.price} 
+                    onChange={(e) => updateItem(idx, { price: parseFloat(e.target.value) || 0 })}
+                    className="w-full bg-transparent border-none p-0 text-xs font-bold text-slate-700 focus:ring-0"
+                  />
+                </div>
+                <div className="flex-1 bg-slate-50/50 p-2 rounded-lg">
                   <p className="text-[8px] text-slate-400 uppercase font-bold">单位</p>
                   <select 
                     value={item.unit}
@@ -239,7 +248,7 @@ export default function InventoryEntry({ vendors, inventory, onComplete }: Inven
                     {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
                   </select>
                 </div>
-                <div className="flex-[1.5] bg-slate-50/50 p-2 rounded-lg">
+                <div className="flex-[1.2] bg-slate-50/50 p-2 rounded-lg">
                   <p className="text-[8px] text-slate-400 uppercase font-bold">品类</p>
                   <select 
                     value={item.category}

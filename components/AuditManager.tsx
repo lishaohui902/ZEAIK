@@ -13,7 +13,7 @@ const CONSUMPTION_TYPES = ['老板带走', '员工餐', '试菜', '临时菜'];
 export default function AuditManager({ inventory, auditRecords, onSave }: AuditManagerProps) {
   const [view, setView] = useState<'audit' | 'consumption' | 'query'>('audit');
   const [editStates, setEditStates] = useState<Record<string, number>>({});
-  const [selectedConsumptionType, setSelectedConsumptionType] = useState('员工餐');
+  const [itemConsumptionTypes, setItemConsumptionTypes] = useState<Record<string, string>>({});
   
   // 列表管理
   const [visibleAuditIds, setVisibleAuditIds] = useState<string[]>([]);
@@ -22,11 +22,10 @@ export default function AuditManager({ inventory, auditRecords, onSave }: AuditM
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedDetailRecord, setSelectedDetailRecord] = useState<AuditRecord | null>(null);
 
-  // 初始化列表（默认显示全部）
+  // 列表管理默认从空开始，由用户手动添加
   useEffect(() => {
-    const allIds = inventory.map(i => i.id);
-    setVisibleAuditIds(allIds);
-    setVisibleConsumptionIds(allIds);
+    // 仅在初次加载或库存变化时，如果列表为空且需要默认逻辑可以保留，
+    // 但根据需求，我们不再自动填充所有项。
   }, [inventory]);
 
   // 当切换视图时，清空选择状态
@@ -41,6 +40,14 @@ export default function AuditManager({ inventory, auditRecords, onSave }: AuditM
   const handleInputChange = (id: string, value: string) => {
     const num = parseFloat(value);
     setEditStates(prev => ({ ...prev, [id]: isNaN(num) ? 0 : num }));
+    // If it's consumption and no type is set, set a default
+    if (view === 'consumption' && !itemConsumptionTypes[id]) {
+      setItemConsumptionTypes(prev => ({ ...prev, [id]: CONSUMPTION_TYPES[0] }));
+    }
+  };
+
+  const handleTypeChange = (id: string, type: string) => {
+    setItemConsumptionTypes(prev => ({ ...prev, [id]: type }));
   };
 
   const toggleSelect = (id: string) => {
@@ -94,7 +101,8 @@ export default function AuditManager({ inventory, auditRecords, onSave }: AuditM
           : Math.max(0, item.currentStock - editStates[item.id]),
         diff: type === 'DAILY_AUDIT' 
           ? editStates[item.id] - item.currentStock 
-          : -editStates[item.id]
+          : -editStates[item.id],
+        consumptionType: type === 'CONSUMPTION' ? (itemConsumptionTypes[item.id] || CONSUMPTION_TYPES[0]) : undefined
       }));
 
     if (items.length === 0) {
@@ -106,13 +114,20 @@ export default function AuditManager({ inventory, auditRecords, onSave }: AuditM
       id: `audit-${Date.now()}`,
       date: new Date().toISOString(),
       type,
-      consumptionType: type === 'CONSUMPTION' ? selectedConsumptionType : undefined,
       items
     };
 
     onSave(record);
     setEditStates({});
+    setItemConsumptionTypes({});
     setSelectedIds(new Set());
+    
+    // 提交后清空当前视图的列表，以便下次重新选择
+    if (type === 'DAILY_AUDIT') {
+      setVisibleAuditIds([]);
+    } else {
+      setVisibleConsumptionIds([]);
+    }
   };
 
   const filteredAuditRecords = auditRecords.filter(record => {
@@ -148,14 +163,7 @@ export default function AuditManager({ inventory, auditRecords, onSave }: AuditM
       {view !== 'query' && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <div className={`${view === 'audit' ? 'bg-blue-50 border-blue-100' : 'bg-orange-50 border-orange-100'} px-4 py-3 rounded-2xl border flex-1 mr-3`}>
-              <h4 className={`font-bold text-sm ${view === 'audit' ? 'text-blue-800' : 'text-orange-800'}`}>
-                {view === 'audit' ? '当前待盘点项' : '当前消耗录入项'}
-              </h4>
-              <p className={`text-[10px] mt-1 ${view === 'audit' ? 'text-blue-600' : 'text-orange-600'}`}>
-                {view === 'audit' ? '勾选并录入实存，未填写的项将不会被更新。' : '勾选并录入消耗量。'}
-              </p>
-            </div>
+            <div className="flex-1"></div>
             {selectedIds.size > 0 && (
               <button 
                 onClick={batchDelete}
@@ -167,26 +175,7 @@ export default function AuditManager({ inventory, auditRecords, onSave }: AuditM
             )}
           </div>
 
-          {view === 'consumption' && (
-            <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 block">消耗类型</label>
-              <div className="flex flex-wrap gap-2">
-                {CONSUMPTION_TYPES.map(type => (
-                  <button
-                    key={type}
-                    onClick={() => setSelectedConsumptionType(type)}
-                    className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all border ${
-                      selectedConsumptionType === type 
-                        ? 'bg-orange-600 text-white border-orange-600 shadow-sm' 
-                        : 'bg-white text-slate-500 border-slate-100'
-                    }`}
-                  >
-                    {type}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+          {/* Global consumption type selector removed as it's now per-item */}
 
           <div className="flex items-center gap-2 px-1 mb-1">
              <button 
@@ -198,29 +187,51 @@ export default function AuditManager({ inventory, auditRecords, onSave }: AuditM
           </div>
 
           <div className="space-y-3">
+            {inventory.filter(i => currentVisibleIds.includes(i.id)).length === 0 && (
+              <div className="py-12 text-center bg-slate-50 rounded-2xl border-2 border-dashed border-slate-100">
+                <Plus className="mx-auto text-slate-300 mb-2" size={32} />
+                <p className="text-slate-400 text-xs font-medium">列表为空，请点击下方按钮添加食材</p>
+              </div>
+            )}
             {inventory.filter(i => currentVisibleIds.includes(i.id)).map(item => (
-              <div key={item.id} className={`bg-white p-4 rounded-2xl border transition-all flex items-center gap-3 ${selectedIds.has(item.id) ? (view === 'audit' ? 'border-blue-500 bg-blue-50/30' : 'border-orange-500 bg-orange-50/30') : 'border-slate-100'}`}>
-                <input 
-                  type="checkbox" 
-                  checked={selectedIds.has(item.id)}
-                  onChange={() => toggleSelect(item.id)}
-                  className={`w-5 h-5 rounded-lg border-slate-300 focus:ring-offset-0 ${view === 'audit' ? 'text-blue-600 focus:ring-blue-500' : 'text-orange-600 focus:ring-orange-500'}`}
-                />
-                <div className="flex-1">
-                  <p className="font-bold text-slate-800 text-sm">{item.name}</p>
-                  <p className="text-[10px] text-slate-400">
-                    {view === 'audit' ? `账面：${item.currentStock}${item.unit}` : `可用：${item.currentStock}${item.unit}`}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
+              <div key={item.id} className={`bg-white p-4 rounded-2xl border transition-all flex flex-col gap-3 ${selectedIds.has(item.id) ? 'border-blue-500 bg-blue-50/30' : 'border-slate-100'}`}>
+                <div className="flex items-center gap-3">
                   <input 
-                    type="number" 
-                    placeholder={view === 'audit' ? "实存" : "消耗"}
-                    value={editStates[item.id] ?? ''}
-                    onChange={(e) => handleInputChange(item.id, e.target.value)}
-                    className={`w-20 text-right px-2 py-1.5 bg-slate-50 border-none rounded-lg text-sm font-bold focus:ring-2 ${view === 'audit' ? 'text-blue-600 focus:ring-blue-500' : 'text-orange-600 focus:ring-orange-500'}`}
+                    type="checkbox" 
+                    checked={selectedIds.has(item.id)}
+                    onChange={() => toggleSelect(item.id)}
+                    className="w-5 h-5 rounded-lg border-slate-300 focus:ring-offset-0 text-blue-600 focus:ring-blue-500"
                   />
-                  <span className="text-xs text-slate-400 font-medium">{item.unit}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-slate-800 text-sm truncate">{item.name}</p>
+                    <p className="text-[10px] text-slate-400">
+                      {view === 'audit' ? `账面：${item.currentStock}${item.unit}` : `可用：${item.currentStock}${item.unit}`}
+                    </p>
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    {view === 'consumption' && (
+                      <select
+                        value={itemConsumptionTypes[item.id] || CONSUMPTION_TYPES[0]}
+                        onChange={(e) => handleTypeChange(item.id, e.target.value)}
+                        className="text-[10px] font-bold bg-blue-50 text-blue-600 border-none rounded-lg py-1 px-2 focus:ring-1 focus:ring-blue-500 outline-none"
+                      >
+                        {CONSUMPTION_TYPES.map(type => (
+                          <option key={type} value={type}>{type}</option>
+                        ))}
+                      </select>
+                    )}
+                    <div className="flex items-center gap-1">
+                      <input 
+                        type="number" 
+                        placeholder={view === 'audit' ? "实存" : "消耗"}
+                        value={editStates[item.id] ?? ''}
+                        onChange={(e) => handleInputChange(item.id, e.target.value)}
+                        className="w-16 text-right px-2 py-1.5 bg-slate-50 border-none rounded-lg text-sm font-bold focus:ring-2 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-[10px] text-slate-400 font-medium">{item.unit}</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             ))}
@@ -236,7 +247,7 @@ export default function AuditManager({ inventory, auditRecords, onSave }: AuditM
 
           <button 
             onClick={() => submit(view === 'audit' ? 'DAILY_AUDIT' : 'CONSUMPTION')}
-            className={`w-full py-4 text-white rounded-2xl font-bold shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2 ${view === 'audit' ? 'bg-blue-600 shadow-blue-200' : 'bg-orange-600 shadow-orange-200'}`}
+            className="w-full py-4 text-white rounded-2xl font-bold shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2 bg-blue-600 shadow-blue-200"
           >
             <CheckCircle size={20} />
             {view === 'audit' ? '提交盘点结果' : '提交消耗记录'}
@@ -277,7 +288,7 @@ export default function AuditManager({ inventory, auditRecords, onSave }: AuditM
               <button
                 onClick={() => setFilterType('CONSUMPTION')}
                 className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all border ${
-                  filterType === 'CONSUMPTION' ? 'bg-orange-600 text-white border-orange-600' : 'bg-white text-slate-500 border-slate-100'
+                  filterType === 'CONSUMPTION' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-500 border-slate-100'
                 }`}
               >
                 消耗单据
@@ -294,14 +305,14 @@ export default function AuditManager({ inventory, auditRecords, onSave }: AuditM
               >
                 <div className="flex justify-between items-start mb-2">
                   <div className="flex items-center gap-2">
-                    <div className={`p-1.5 rounded-lg ${record.type === 'DAILY_AUDIT' ? 'bg-blue-50 text-blue-600' : 'bg-orange-50 text-orange-600'}`}>
+                    <div className="p-1.5 rounded-lg bg-blue-50 text-blue-600">
                       {record.type === 'DAILY_AUDIT' ? <ClipboardList size={16} /> : <Utensils size={16} />}
                     </div>
                     <div>
                       <h5 className="text-sm font-bold text-slate-800 flex items-center gap-2">
                         {record.type === 'DAILY_AUDIT' ? '盘点单据' : '消耗单据'}
                         {record.consumptionType && (
-                          <span className="px-1.5 py-0.5 bg-orange-50 text-orange-600 text-[9px] border border-orange-100 rounded">
+                          <span className="px-1.5 py-0.5 bg-blue-50 text-blue-600 text-[9px] border border-blue-100 rounded">
                             {record.consumptionType}
                           </span>
                         )}
@@ -356,7 +367,7 @@ export default function AuditManager({ inventory, auditRecords, onSave }: AuditM
                       <p className="text-sm font-bold text-slate-700">{item.name}</p>
                       <p className="text-[10px] text-slate-400">{item.category} · 当前库存:{item.currentStock}{item.unit}</p>
                     </div>
-                    <div className={`p-1.5 rounded-lg ${view === 'audit' ? 'bg-blue-50 text-blue-600' : 'bg-orange-50 text-orange-600'}`}>
+                    <div className={`p-1.5 rounded-lg bg-blue-50 text-blue-600`}>
                       <Plus size={16} />
                     </div>
                   </button>
@@ -374,7 +385,7 @@ export default function AuditManager({ inventory, auditRecords, onSave }: AuditM
       {selectedDetailRecord && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200">
-            <div className={`p-5 border-b border-slate-50 flex items-center justify-between text-white ${selectedDetailRecord.type === 'DAILY_AUDIT' ? 'bg-blue-600' : 'bg-orange-600'}`}>
+            <div className="p-5 border-b border-slate-50 flex items-center justify-between text-white bg-blue-600">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-white/20 rounded-xl">
                   {selectedDetailRecord.type === 'DAILY_AUDIT' ? <ClipboardList size={20} /> : <Utensils size={20} />}
@@ -405,7 +416,7 @@ export default function AuditManager({ inventory, auditRecords, onSave }: AuditM
                   <>
                     <div>
                       <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">消耗类型</p>
-                      <p className="text-sm font-black text-orange-600">{selectedDetailRecord.consumptionType}</p>
+                      <p className="text-sm font-black text-blue-600">{selectedDetailRecord.consumptionType}</p>
                     </div>
                     <div className="w-px h-8 bg-slate-200"></div>
                   </>
@@ -429,11 +440,16 @@ export default function AuditManager({ inventory, auditRecords, onSave }: AuditM
                           <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${item.diff === 0 ? 'bg-slate-50 text-slate-400' : (item.diff > 0 ? 'bg-blue-50 text-blue-600' : 'bg-red-50 text-red-600')}`}>
                             {item.diff > 0 ? `+${item.diff}` : item.diff}
                           </span>
+                          {item.consumptionType && (
+                            <span className="px-1.5 py-0.5 bg-blue-50 text-blue-600 text-[9px] border border-blue-100 rounded">
+                              {item.consumptionType}
+                            </span>
+                          )}
                         </div>
                         <div className="flex items-center gap-2 mt-1">
                           <span className="text-[10px] text-slate-400">账面: {item.previousStock}</span>
                           <ArrowRight size={10} className="text-slate-300" />
-                          <span className={`text-[10px] font-bold ${selectedDetailRecord.type === 'DAILY_AUDIT' ? 'text-blue-600' : 'text-orange-600'}`}>
+                          <span className={`text-[10px] font-bold text-blue-600`}>
                             {selectedDetailRecord.type === 'DAILY_AUDIT' ? `实存: ${item.newStock}` : `消耗: ${Math.abs(item.diff)}`}
                           </span>
                         </div>
